@@ -90,17 +90,9 @@
             border-radius: 8px;
         }
         
+        /* Native Player verstecken, wir nutzen nur die Custom-Controls */
         #audioPlayer {
-            position: fixed;
-            bottom: 130px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
-            width: 80%;
-            max-width: 400px;
-            height: 40px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 20px;
+            display: none;
         }
     </style>
 </head>
@@ -109,7 +101,7 @@
     <canvas id="overlayCanvas"></canvas>
     
     <div class="track-info" id="trackInfo">📁 Audio oder Playlist laden zum Starten</div>
-    <audio id="audioPlayer" controls></audio>
+    <audio id="audioPlayer"></audio>
     
     <div class="controls">
         <button onclick="document.getElementById('audioFiles').click()">📁 Audio/Playlist laden</button>
