@@ -15,14 +15,14 @@ An immersive audio visualizer that blends a WebGL fluid simulation with a reacti
 - **Waveform Circle** – Rotating circle that visualizes the waveform
 - **Average Circle** – Pulsing ring based on overall loudness
 - **4K Support** – Tuned for high-resolution displays
-- **Playlist & Multi-select** – Pick multiple MP3 files at once and play them as a playlist
+- **Playlist & Multi-select** – Load audio files (mp3, flac, wav, ogg/oga, m4a/aac, opus, weba) and playlist files (m3u/m3u8, pls, asx, xspf)
 - **Mouse/Touch Interaction** – Draw into the fluid manually
 
 ## 🚀 Demo
 
 **Live:** [robderoy.de/apps/sound](https://robderoy.de/apps/sound/)
 
-Locally: open `index.html` in your browser, load one or more MP3 files, and enjoy.
+Locally: open `index.html` in your browser, load one or more audio files or a playlist, and enjoy.
 
 ## 🎨 Color Palette
 
@@ -33,8 +33,8 @@ Locally: open `index.html` in your browser, load one or more MP3 files, and enjo
 ## 📁 Installation
 
 ```bash
-git clone https://github.com/Wolfram33/Visual_Audio_Bosster.git
-cd Visual_Audio_Bosster
+git clone https://github.com/Wolfram33/Visual_Audio_Booster-for-Browsers.git
+cd Visual_Audio_Booster-for-Browsers
 # Open index.html in your browser
 ```
 
@@ -44,11 +44,16 @@ No dependencies or build tools needed — pure HTML/CSS/JavaScript.
 
 | Action | Function |
 |--------|----------|
-| 📁 Load MP3 | Select one or more audio files |
+| 📁 Load Audio/Playlist | Select audio files (mp3, flac, wav, ogg/oga, m4a/aac, opus, weba) or playlist files (m3u/m3u8, pls, asx, xspf) |
 | ⏮️ | Previous track |
 | ▶️ / ⏸️ | Play / Pause |
 | ⏭️ | Next track |
 | Drag with mouse/touch | Draw into the fluid |
+
+## 🆕 What changed
+
+- Broader audio support: mp3, flac, wav, ogg/oga, m4a/aac, opus, weba.
+- Native playlist support: m3u/m3u8, pls, asx, xspf (local entries are matched to uploaded files; remote URLs are used directly).
 
 ## 🙏 Credits & Attribution
 
