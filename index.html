@@ -1027,7 +1027,7 @@ async function loadPlaylist(event) {
   if (!audioPlayer.dataset.connected) {
     const source = audioContext.createMediaElementSource(audioPlayer);
     source.connect(analyser);
-    analyser.connect(audioContext.destination);
+    source.connect(audioContext.destination);
     audioPlayer.dataset.connected = 'true';
     
     audioPlayer.addEventListener('ended', () => { currentTrackIndex = (currentTrackIndex + 1) % playlist.length; playCurrentTrack(); });
