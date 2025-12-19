@@ -131,6 +131,14 @@ SOFTWARE.
 
 Pull Requests sind willkommen! Bei größeren Änderungen bitte zuerst ein Issue öffnen.
 
+## 💝 Unterstützung
+
+Wenn dir dieses Projekt gefällt, kannst du mich mit einer kleinen Spende unterstützen:
+
+[![PayPal](https://img.shields.io/badge/PayPal-Spenden-blue?logo=paypal)](https://www.paypal.com/paypalme/robderoy)
+
+Oder direkt via PayPal an: **robderoy@protonmail.ch**
+
 ---
 Ideen, was man noch für Funktionen einbauen könnte?
 Gemacht mit 🎵 und WebGL
