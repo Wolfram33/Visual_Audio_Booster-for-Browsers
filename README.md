@@ -131,13 +131,6 @@ SOFTWARE.
 
 Pull Requests sind willkommen! Bei größeren Änderungen bitte zuerst ein Issue öffnen.
 
-## 💡 Ideen für Erweiterungen
-
-- [ ] Mikrofon-Eingabe-Unterstützung
-- [ ] Wechselbare Farbschemata
-- [ ] Einstellbare Empfindlichkeit
-- [ ] Video-Export
-
 ---
-
+Ideen, was man noch für Funktionen einbauen könnte?
 Gemacht mit 🎵 und WebGL
