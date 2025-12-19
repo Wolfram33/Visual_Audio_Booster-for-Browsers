@@ -1,6 +1,6 @@
 # 🎵 Audio Fluid Visualizer
 
-Ein hochkomplexer, immersiver Audio-Visualizer, der mehrere fortgeschrittene Web-Technologien zu einem einheitlichen System vereint. Die Integration von WebGL Fluid Simulation, Echtzeit-Audio-Analyse, Beat-Detection und reaktiver Waveform-Visualisierung erforderte umfangreiche Entwicklungsarbeit in den Bereichen Audio-Processing, Shader-Programmierung und Performance-Optimierung. Das System reagiert in Echtzeit auf Sub-Bass, Bass, Mitten und Höhen mit einer kinematischen Palette aus tiefen Weinrot- und Blautönen.
+Ein immersiver Audio-Visualizer, der mehrere fortgeschrittene Web-Technologien zu einem einheitlichen System vereint. Die Integration von WebGL Fluid Simulation, Echtzeit-Audio-Analyse, Beat-Detection und reaktiver Waveform-Visualisierung erforderte umfangreiche Entwicklungsarbeit in den Bereichen Audio-Processing, Shader-Programmierung und Performance-Optimierung. Das System reagiert in Echtzeit auf Sub-Bass, Bass, Mitten und Höhen mit einer kinematischen Palette aus tiefen Weinrot- und Blautönen.
 
 ## 🔴 Live Demo
 
