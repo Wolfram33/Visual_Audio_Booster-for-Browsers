@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <title>Audio Fluid Visualizer</title>
     <!--
     ╔═══════════════════════════════════════════════════════════════════════════╗
@@ -42,6 +43,7 @@
             height: 100vh; 
             display: block;
             z-index: 1;
+            background: transparent !important;
         }
         
         #overlayCanvas {
@@ -118,9 +120,69 @@
         .palette-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
         .palette-actions button { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
         .palette-actions button:hover { background: rgba(255,255,255,0.25); }
+
+        /* Background Bild Container - LIEGT ÜBER DEM FLUID */
+        #backgroundContainer {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;  /* Über fluidCanvas (1) und overlayCanvas (2) */
+            pointer-events: none;  /* Klicks durchlassen */
+            background-color: transparent;  /* Kein schwarzer Hintergrund */
+            background-repeat: no-repeat;
+            background-position: center center;
+            opacity: 0.1;  /* 90% transparent - Fluid scheint stark durch */
+        }
+        #backgroundContainer.stretch {
+            background-size: 100% 100%;
+        }
+        #backgroundContainer.cover {
+            background-size: cover;
+        }
+        #backgroundContainer.contain {
+            background-size: contain;
+        }
+        #backgroundContainer.center {
+            background-size: auto;
+        }
+
+        /* Background Panel */
+        .bg-panel {
+            position: fixed;
+            left: 20px;
+            top: 20px;
+            width: 280px;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 14px 16px;
+            border-radius: 12px;
+            z-index: 200;
+            display: none;
+        }
+        .bg-panel h3 { font-size: 16px; margin: 6px 0 10px; }
+        .bg-panel .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
+        .bg-panel label { font-size: 12px; opacity: 0.9; }
+        .bg-panel select, .bg-panel input[type="range"] { flex: 1; }
+        .bg-panel select { 
+            background: rgba(40,40,40,0.95); 
+            border: 1px solid rgba(255,255,255,0.3); 
+            color: #fff; 
+            padding: 6px 8px; 
+            border-radius: 6px; 
+        }
+        .bg-panel select option {
+            background: #333;
+            color: #fff;
+        }
+        .bg-panel .preview { width: 100%; height: 60px; background: rgba(255,255,255,0.1); border-radius: 6px; margin: 8px 0; background-size: contain; background-repeat: no-repeat; background-position: center; }
+        .bg-panel .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+        .bg-panel button { flex: 1; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .bg-panel button:hover { background: rgba(255,255,255,0.25); }
     </style>
 </head>
 <body>
+    <div id="backgroundContainer"></div>
     <canvas id="fluidCanvas"></canvas>
     <canvas id="overlayCanvas"></canvas>
     
@@ -133,6 +195,7 @@
         <button id="playBtn" onclick="togglePlay()">▶️ Play</button>
         <button onclick="nextTrack()">⏭️</button>
         <button onclick="togglePalette()">🎨 Farben</button>
+        <button onclick="toggleBgPanel()">🖼️ Hintergrund</button>
         <input type="file" id="audioFiles" style="display:none" accept="audio/*,.m3u,.m3u8,.pls,.asx,.xspf" multiple onchange="loadPlaylist(event)">
     </div>
 
@@ -169,6 +232,28 @@
         <div class="palette-actions">
             <button onclick="resetPalette()">Zurücksetzen</button>
             <button onclick="togglePalette()">Schließen</button>
+        </div>
+    </div>
+
+    <div id="bgPanel" class="bg-panel">
+        <h3>🖼️ Hintergrundbild</h3>
+        <div class="preview" id="bgPreview"></div>
+        <div class="row">
+            <label for="bgMode">Darstellung</label>
+            <select id="bgMode" onchange="setBgMode(this.value)">
+                <option value="cover">Füllen (Cover)</option>
+                <option value="stretch">Strecken</option>
+                <option value="contain">Einpassen</option>
+                <option value="center">Zentriert (Original)</option>
+            </select>
+        </div>
+        <div class="btn-row">
+            <button id="bgSelectBtn">📁 Bild wählen</button>
+            <button onclick="clearBackground()">🗑️ Entfernen</button>
+        </div>
+        <input type="file" id="bgImageFile" style="display:none" accept="image/*">
+        <div class="btn-row">
+            <button onclick="toggleBgPanel()">Schließen</button>
         </div>
     </div>
 

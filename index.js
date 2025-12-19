@@ -136,6 +136,170 @@ function loadCircleAmplitude(){
 }
 function saveCircleAmplitude(){ try{ localStorage.setItem('vab_waveformAmplitude', String(waveformAmplitude)); }catch(e){} }
 
+// ========== BACKGROUND IMAGE ==========
+let bgImageData = null;
+let bgMode = 'cover';
+const bgOpacity = 0.1;  // Fest: 90% transparent (Fluid scheint stark durch)
+
+function loadBgSettings(){
+  try {
+    const data = localStorage.getItem('vab_bgImage');
+    const mode = localStorage.getItem('vab_bgMode');
+    if (data) bgImageData = data;
+    if (mode) bgMode = mode;
+    // bgOpacity ist jetzt fest auf 0.1
+  } catch(e) {}
+}
+
+function saveBgSettings(){
+  try {
+    if (bgImageData) {
+      localStorage.setItem('vab_bgImage', bgImageData);
+    } else {
+      localStorage.removeItem('vab_bgImage');
+    }
+    localStorage.setItem('vab_bgMode', bgMode);
+    // bgOpacity ist fest, wird nicht gespeichert
+  } catch(e) {
+    // Bei zu großen Bildern kann localStorage voll werden
+    console.warn('Hintergrundbild zu groß für localStorage');
+  }
+}
+
+function applyBackground(){
+  const container = document.getElementById('backgroundContainer');
+  if (!container) return;
+  
+  // Alle Mode-Klassen entfernen
+  container.classList.remove('stretch', 'cover', 'contain', 'center');
+  
+  if (bgImageData) {
+    container.style.backgroundImage = `url(${bgImageData})`;
+    container.classList.add(bgMode);
+    container.style.opacity = bgOpacity;  // Fest 0.1 (90% transparent)
+  } else {
+    container.style.backgroundImage = 'none';
+    container.style.opacity = 0;  // Kein Bild = komplett unsichtbar
+  }
+  
+  // Preview aktualisieren
+  const preview = document.getElementById('bgPreview');
+  if (preview) {
+    preview.style.backgroundImage = bgImageData ? `url(${bgImageData})` : 'none';
+  }
+}
+
+function loadBackgroundImage(event){
+  console.log('loadBackgroundImage aufgerufen', event);
+  const files = event.target.files;
+  console.log('Files:', files);
+  if (!files || files.length === 0) {
+    console.log('Keine Dateien ausgewählt');
+    return;
+  }
+  const file = files[0];
+  console.log('Datei:', file.name, file.type);
+  
+  if (!file.type.startsWith('image/')) {
+    console.log('Keine Bilddatei');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    console.log('FileReader fertig, Datenlänge:', e.target.result.length);
+    bgImageData = e.target.result;
+    applyBackground();
+    saveBgSettings();
+  };
+  reader.onerror = function(e) {
+    console.error('FileReader Fehler:', e);
+  };
+  reader.readAsDataURL(file);
+  
+  // Input zurücksetzen für erneutes Laden derselben Datei
+  event.target.value = '';
+}
+
+function setBgMode(mode){
+  bgMode = mode;
+  applyBackground();
+  saveBgSettings();
+}
+
+function clearBackground(){
+  bgImageData = null;
+  applyBackground();
+  saveBgSettings();
+}
+
+function toggleBgPanel(){
+  const el = document.getElementById('bgPanel');
+  if (!el) return;
+  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+}
+
+function initBackgroundUI(){
+  console.log('initBackgroundUI gestartet');
+  loadBgSettings();
+  console.log('Geladene bgImageData:', bgImageData ? 'Vorhanden (' + bgImageData.length + ' Zeichen)' : 'Keine');
+  applyBackground();
+  
+  // UI-Elemente mit gespeicherten Werten initialisieren
+  const modeSelect = document.getElementById('bgMode');
+  if (modeSelect) modeSelect.value = bgMode;
+  
+  // Event-Listener für Bild-Upload - Button klickt das versteckte Input
+  const bgSelectBtn = document.getElementById('bgSelectBtn');
+  const bgInput = document.getElementById('bgImageFile');
+  
+  console.log('bgSelectBtn gefunden:', !!bgSelectBtn);
+  console.log('bgInput gefunden:', !!bgInput);
+  
+  if (bgSelectBtn && bgInput) {
+    bgSelectBtn.addEventListener('click', function(e) {
+      console.log('Button geklickt, öffne Dateiauswahl...');
+      e.preventDefault();
+      e.stopPropagation();
+      bgInput.value = ''; // Input zurücksetzen BEVOR der Dialog öffnet
+      bgInput.click();
+    });
+    
+    bgInput.addEventListener('change', function(event) {
+      console.log('Input change Event ausgelöst');
+      const files = event.target.files;
+      console.log('Ausgewählte Dateien:', files ? files.length : 0);
+      if (!files || files.length === 0) return;
+      
+      const file = files[0];
+      console.log('Datei:', file.name, file.type, file.size, 'bytes');
+      if (!file.type.startsWith('image/')) {
+        console.log('Keine Bilddatei, abgebrochen');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        console.log('FileReader onload, Länge:', e.target.result.length);
+        bgImageData = e.target.result;
+        applyBackground();
+        saveBgSettings();
+        console.log('Hintergrund angewendet und gespeichert');
+      };
+      reader.onerror = function(e) {
+        console.error('FileReader Fehler:', e);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  
+  // Globale Funktionen für onclick-Handler
+  window.loadBackgroundImage = loadBackgroundImage;
+  window.setBgMode = setBgMode;
+  window.clearBackground = clearBackground;
+  window.toggleBgPanel = toggleBgPanel;
+}
+
 let palette = loadPalette();
 
 function colorFromPalette(key, scale){
@@ -300,7 +464,13 @@ let ext = _getWebGLContext.ext;
 let support_linear_float = _getWebGLContext.support_linear_float;
 
 function getWebGLContext(canvas) {
-  let params = { alpha: false, depth: false, stencil: false, antialias: false };
+  let params = { 
+    alpha: false,                   // Keine Transparenz nötig - Bild liegt drüber
+    depth: false, 
+    stencil: false, 
+    antialias: false, 
+    preserveDrawingBuffer: false
+  };
   let gl = canvas.getContext("webgl2", params);
   let isWebGL2 = !!gl;
   if (!isWebGL2) gl = canvas.getContext("webgl", params) || canvas.getContext("experimental-webgl", params);
@@ -311,7 +481,8 @@ function getWebGLContext(canvas) {
     gl.getExtension("EXT_color_buffer_float");
     support_linear_float = gl.getExtension("OES_texture_float_linear");
   }
-  gl.clearColor(0.0, 0.0, 0.0, 1.0);
+  gl.clearColor(0.0, 0.0, 0.0, 0.0);
+  // Blending wird in fluidUpdate() pro Frame kontrolliert
 
   let internalFormat = isWebGL2 ? gl.RGBA16F : gl.RGBA;
   let internalFormatRG = isWebGL2 ? gl.RG16F : gl.RGBA;
@@ -389,6 +560,7 @@ let displayShader = compileShader(gl.FRAGMENT_SHADER, `
   precision mediump sampler2D;
   varying vec2 vUv;
   uniform sampler2D uTexture;
+
   void main () {
     gl_FragColor = texture2D(uTexture, vUv);
   }
@@ -436,7 +608,7 @@ let advectionManualFilteringShader = compileShader(gl.FRAGMENT_SHADER, `
   void main () {
     vec2 coord = gl_FragCoord.xy - dt * texture2D(uVelocity, vUv).xy;
     gl_FragColor = dissipation * bilerp(uSource, coord);
-    gl_FragColor.a = 1.0;
+    // Alpha der Quelle beibehalten für Transparenz
   }
 `);
 
@@ -452,7 +624,7 @@ let advectionShader = compileShader(gl.FRAGMENT_SHADER, `
   void main () {
     vec2 coord = vUv - dt * texture2D(uVelocity, vUv).xy * texelSize;
     gl_FragColor = dissipation * texture2D(uSource, coord);
-    gl_FragColor.a = 1.0;
+    // Alpha der Quelle beibehalten für Transparenz
   }
 `);
 
@@ -921,6 +1093,9 @@ function processAudioFrame() {
 }
 
 function fluidUpdate() {
+  // Blending während der Simulation deaktivieren
+  gl.disable(gl.BLEND);
+  
   gl.viewport(0, 0, textureWidth, textureHeight);
   
   while (splatStack.length > 0) {
@@ -988,6 +1163,7 @@ function fluidUpdate() {
   density.swap();
   
   gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  
   displayProgram.bind();
   gl.uniform1i(displayProgram.uniforms.uTexture, density.read.texId);
   blit(null);
@@ -1139,6 +1315,12 @@ function nextTrack() { if (!playlist.length) return; currentTrackIndex = (curren
 function prevTrack() { if (!playlist.length) return; currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length; playCurrentTrack(); }
 function togglePlay() { const audioPlayer = document.getElementById('audioPlayer'); if (audioPlayer.paused) audioPlayer.play(); else audioPlayer.pause(); }
 
+// Globale Funktionen für HTML onclick-Handler
+window.loadPlaylist = loadPlaylist;
+window.togglePlay = togglePlay;
+window.nextTrack = nextTrack;
+window.prevTrack = prevTrack;
+
 // ========== RESIZE HANDLER ==========
 window.addEventListener('resize', () => {
   canvas.width = window.innerWidth;
@@ -1201,6 +1383,34 @@ setInterval(() => {
 }, 16);
 
 // ========== START ==========
-initOverlayCanvas();
-try { setupPaletteUI(); } catch(e) { /* noop */ }
-update();
+console.log('=== Audio Fluid Visualizer Start ===');
+
+try {
+  initOverlayCanvas();
+  console.log('✓ initOverlayCanvas erfolgreich');
+} catch(e) {
+  console.error('✗ initOverlayCanvas Fehler:', e);
+}
+
+try {
+  setupPaletteUI();
+  console.log('✓ setupPaletteUI erfolgreich');
+} catch(e) {
+  console.error('✗ setupPaletteUI Fehler:', e);
+}
+
+try {
+  initBackgroundUI();
+  console.log('✓ initBackgroundUI erfolgreich');
+} catch(e) {
+  console.error('✗ initBackgroundUI Fehler:', e);
+}
+
+try {
+  update();
+  console.log('✓ update() gestartet');
+} catch(e) {
+  console.error('✗ update Fehler:', e);
+}
+
+console.log('=== Initialisierung abgeschlossen ===');
