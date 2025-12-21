@@ -18,6 +18,7 @@ Ein immersiver Audio-Visualizer, der mehrere fortgeschrittene Web-Technologien z
 - **Playlist & Multi-Select** – Laden von Audiodateien (mp3, flac, wav, ogg/oga, m4a/aac, opus, weba) und Playlist-Dateien (m3u/m3u8, pls, asx, xspf)
 - **Maus-/Touch-Interaktion** – Manuelles Zeichnen in die Flüssigkeit
 - **Auswahl eines Hintergrundbildes** – Cover, gestreckt oder Original
+- **Verwende eine Farben** – Cover, gestreckt oder Original
 
 ## 🚀 Demo
 
