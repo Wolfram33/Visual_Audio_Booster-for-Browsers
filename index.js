@@ -21,6 +21,7 @@ let emitters = [
 // Beat-Detection
 let lastSubBass = 0, lastBass = 0, lastMid = 0;
 let subBassEnergy = 0, bassEnergy = 0;
+let kickEnergy = 0;
 
 // ========== OVERLAY VARIABLEN (Waveform + Avg Circle) ==========
 const waveform_color = "rgba(26, 26, 28, 0.38)";
@@ -421,17 +422,54 @@ function initAudioContext() {
   analyser.fftSize = fftSize;
   analyser.minDecibels = -100;
   analyser.maxDecibels = -30;
-  analyser.smoothingTimeConstant = 0.8;
+  analyser.smoothingTimeConstant = 0.55;
   dataArray = new Uint8Array(analyser.frequencyBinCount);
   timeDataArray = new Uint8Array(analyser.frequencyBinCount);
 }
 
-function getAverageVolume(start, end) {
+// Bänder werden in Hertz definiert und intern auf die aktuelle
+// fftSize/sampleRate gemappt – egal welche Bildschirmauflösung.
+function hzToBin(hz) {
+  const nyquist = audioContext.sampleRate / 2;
+  const bin = Math.round((hz / nyquist) * analyser.frequencyBinCount);
+  return Math.max(0, Math.min(analyser.frequencyBinCount - 1, bin));
+}
+
+function getBandEnergy(lowHz, highHz) {
   if (!dataArray) return 0;
+  const start = hzToBin(lowHz);
+  const end = Math.max(start + 1, hzToBin(highHz));
   let sum = 0;
-  for (let i = start; i < end && i < dataArray.length; i++) sum += dataArray[i];
+  for (let i = start; i < end; i++) sum += dataArray[i];
   return sum / (end - start);
 }
+
+// Adaptiver Beat-Detektor:
+// Schwelle = laufender Mittelwert + sensitivity * Standardabweichung,
+// plus Refraktärzeit gegen Doppeltrigger.
+function makeBeatDetector(historyLen = 43, sensitivity = 1.4, refractoryMs = 180) {
+  return {
+    history: [],
+    lastBeat: 0,
+    detect(energy, now) {
+      this.history.push(energy);
+      if (this.history.length > historyLen) this.history.shift();
+      const n = this.history.length;
+      const mean = this.history.reduce((a, b) => a + b, 0) / n;
+      const variance = this.history.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+      const threshold = mean + sensitivity * Math.sqrt(variance);
+      const isBeat = energy > threshold
+                  && energy > mean * 1.15
+                  && (now - this.lastBeat) > refractoryMs;
+      if (isBeat) this.lastBeat = now;
+      return isBeat;
+    }
+  };
+}
+
+// Ein Detektor pro relevantem Band:
+const kickDetector = makeBeatDetector();              // dominanter Beat
+const bassDetector = makeBeatDetector(43, 1.5, 160);  // Bass / Snare-Körper
 
 function getAvg(values) {
   let value = 0;
@@ -973,122 +1011,129 @@ function update() {
 
 function processAudioFrame() {
   if (!audioActive || !analyser || !dataArray) return;
-  
-  const subBass = getAverageVolume(0, 3);
-  const bass = getAverageVolume(3, 6);
-  const mid = getAverageVolume(12, 48);
-  const treble = getAverageVolume(48, 256);
-  
-  const subBassDelta = subBass - lastSubBass;
-  const bassDelta = bass - lastBass;
-  
-  const isSubBassHit = (subBassDelta > 8 && subBass > 25) || (subBass > lastSubBass * 1.5 && subBass > 30);
-  const isBassHit = (bassDelta > 10 && bass > 30) || (bass > lastBass * 1.35 && bass > 40);
-  
-  if (isSubBassHit) { subBassEnergy = 1.5; } else { subBassEnergy *= 0.75; }
-  if (isBassHit) { bassEnergy = 1.3; } else { bassEnergy *= 0.8; }
-  
-  const subPump = '💥'.repeat(Math.min(Math.floor(subBassEnergy * 3), 5));
+
+  // --- Bänder in Hz (auflösungsunabhängig) ---
+  const subBass = getBandEnergy(20, 50);    // Rumpeln, nur optische Stütze
+  const kick    = getBandEnergy(50, 120);   // DER dominante Beat (Bassdrum)
+  const bass    = getBandEnergy(120, 250);  // Bass / Snare-Körper
+  const mid     = getBandEnergy(250, 2000);
+  const treble  = getBandEnergy(2000, 8000);
+
+  const now = performance.now();
+
+  // --- Adaptive Beat-Erkennung ---
+  if (kickDetector.detect(kick, now)) { kickEnergy = 1.5; } else { kickEnergy *= 0.85; }
+  if (bassDetector.detect(bass, now)) { bassEnergy = 1.3; } else { bassEnergy *= 0.8; }
+
+  // --- Anzeige ---
+  const kickPump = '💥'.repeat(Math.min(Math.floor(kickEnergy * 3), 5));
   const bassPump = '🔥'.repeat(Math.min(Math.floor(bassEnergy * 3), 4));
-  document.getElementById('trackInfo').innerHTML = 
+  document.getElementById('trackInfo').innerHTML =
     `🎵 ${currentTrackIndex + 1}/${playlist.length || 1} | ` +
-    `<span style="color:#ff3333">Sub: ${subBass.toFixed(0)} ${subPump}</span> | ` +
+    `<span style="color:#ff3333">Kick: ${kick.toFixed(0)} ${kickPump}</span> | ` +
     `<span style="color:#ff8844">Bass: ${bass.toFixed(0)} ${bassPump}</span> | ` +
     `<span style="color:#44aaff">Mid: ${mid.toFixed(0)}</span>`;
-  
+
+  // --- Emitter bewegen ---
   for (let e of emitters) {
     e.x += e.vx; e.y += e.vy;
     if (e.x < 0.1 || e.x > 0.9) e.vx *= -1;
     if (e.y < 0.1 || e.y > 0.9) e.vy *= -1;
   }
-  
-  // SUB-BASS (tiefes Weinrot)
-  if (subBass > 15) {
-    const intensity = Math.min(subBass / 220, 0.3);
-    const explosionPower = 1 + subBassEnergy * 1.5;
+
+  // === KICK: der dominante Beat treibt die großen Ausschläge ===
+  if (kick > 15) {
+    const intensity = Math.min(kick / 220, 0.3);
+    const explosionPower = 1 + kickEnergy * 1.5;
     const centerX = canvas.width * 0.5;
     const centerY = canvas.height * 0.98;
-    
+
     splatStack.push({
       x: centerX, y: centerY,
       dx: (Math.random() - 0.5) * 15 * explosionPower,
-      dy: -subBass * 1.5 * explosionPower,
+      dy: -kick * 1.5 * explosionPower,
       color: colorFromPalette('sub', intensity * explosionPower)
     });
-    
-    if (subBassEnergy > 0.3) {
-      const velInput = subBass * 0.08 * subBassEnergy;
+
+    if (kickEnergy > 0.3) {
+      const velInput = kick * 0.08 * kickEnergy;
       splat(canvas.width * 0.5, canvas.height * 0.9, 0, -velInput * 12, [0, 0, 0], 0.06);
     }
-    
-    if (subBassEnergy > 0.5) {
-      const numExplosions = Math.floor(subBassEnergy * 4) + 2;
-      const curlForce = subBass * 2 * subBassEnergy;
+
+    if (kickEnergy > 0.5) {
+      const numExplosions = Math.floor(kickEnergy * 4) + 2;
+      const curlForce = kick * 2 * kickEnergy;
       const splitDistance = canvas.width * 0.005;
-      
+
       splat(canvas.width * 0.5 - splitDistance, canvas.height * 0.9, -curlForce * 0.05, -curlForce * 0.3, [0, 0, 0]);
-      splat(canvas.width * 0.5 + splitDistance, canvas.height * 0.9, curlForce * 0.05, -curlForce * 0.3, [0, 0, 0]);
-      
+      splat(canvas.width * 0.5 + splitDistance, canvas.height * 0.9,  curlForce * 0.05, -curlForce * 0.3, [0, 0, 0]);
+
       for (let i = 0; i < numExplosions; i++) {
         const x = canvas.width * (0.2 + Math.random() * 0.6);
         const y = canvas.height * (0.7 + Math.random() * 0.25);
         const angle = -Math.PI * (0.3 + Math.random() * 0.4);
-        const force = subBass * 1.2 * subBassEnergy * (0.5 + Math.random());
-        splatStack.push({ x, y, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('sub', intensity * subBassEnergy) });
+        const force = kick * 1.2 * kickEnergy * (0.5 + Math.random());
+        splatStack.push({ x, y, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('sub', intensity * kickEnergy) });
       }
-      
-      if (subBassEnergy > 0.8) {
+
+      if (kickEnergy > 0.8) {
         for (let i = 0; i < 3; i++) {
-          splatStack.push({ x: canvas.width * (0.3 + i * 0.2), y: canvas.height * 0.99, dx: (Math.random() - 0.5) * 8, dy: -subBass * 2.5 * subBassEnergy, color: colorFromPalette('sub', subBassEnergy) });
+          splatStack.push({ x: canvas.width * (0.3 + i * 0.2), y: canvas.height * 0.99, dx: (Math.random() - 0.5) * 8, dy: -kick * 2.5 * kickEnergy, color: colorFromPalette('sub', kickEnergy) });
         }
       }
     }
   }
-  
-  // BASS (tiefes Weinrot / dunkles Magenta)
+
+  // === SUB-BASS: jetzt nur noch sanfte Stütze, kein Hauptreiber ===
+  if (subBass > 20) {
+    const intensity = Math.min(subBass / 400, 0.12);
+    splatStack.push({
+      x: canvas.width * 0.5, y: canvas.height * 0.99,
+      dx: (Math.random() - 0.5) * 4,
+      dy: -subBass * 0.5,
+      color: colorFromPalette('sub', intensity)
+    });
+  }
+
+  // === BASS / Snare-Körper: Seiten-Emitter ===
   if (bass > 20) {
     const intensity = Math.min(bass / 250, 0.25);
     const pumpPower = 1 + bassEnergy * 1.5;
     const dx = (Math.random() - 0.5) * bass * 0.5 * pumpPower;
     const dy = -bass * 0.8 * pumpPower;
-    
-    splatStack.push({ x: emitters[0].x * canvas.width, y: emitters[0].y * canvas.height, dx, dy, color: colorFromPalette('bassA', intensity * pumpPower) });
+
+    splatStack.push({ x: emitters[0].x * canvas.width, y: emitters[0].y * canvas.height, dx,     dy, color: colorFromPalette('bassA', intensity * pumpPower) });
     splatStack.push({ x: emitters[1].x * canvas.width, y: emitters[1].y * canvas.height, dx: -dx, dy, color: colorFromPalette('bassB', intensity * pumpPower) });
-    
-    if (bassEnergy > 0.3) {
-      const velInput = bass * 0.05 * bassEnergy;
-      splat(canvas.width * 0.5, canvas.height * 0.85, 0, -velInput * 8, [0, 0, 0], 0.04);
-    }
-    
+
     if (bassEnergy > 0.4) {
       const numSplats = Math.floor(bassEnergy * 3) + 1;
       for (let i = 0; i < numSplats; i++) {
         const x = canvas.width * (0.1 + Math.random() * 0.8);
         const y = canvas.height * (0.6 + Math.random() * 0.35);
-        const angle = -Math.PI/2 + (Math.random() - 0.5) * 1.0;
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.0;
         const force = bass * 0.8 * bassEnergy;
         splatStack.push({ x, y, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('bassA', intensity * bassEnergy) });
       }
     }
   }
-  
-  // MITTEN (tiefes Blau / Indigo)
+
+  // === MITTEN ===
   if (mid > 80) {
     const intensity = Math.min(mid / 500, 0.15);
     const angle = Date.now() * 0.002;
     const force = mid * 0.08;
     splatStack.push({ x: emitters[2].x * canvas.width, y: emitters[2].y * canvas.height, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('mid', intensity) });
   }
-  
-  // HÖHEN (tiefes Blau / Cyan-Blau)
+
+  // === HÖHEN ===
   if (treble > 80) {
     const intensity = Math.min(treble / 500, 0.12);
     const dx = (Math.random() - 0.5) * treble * 0.05;
     const dy = (Math.random() - 0.5) * treble * 0.05;
-    splatStack.push({ x: emitters[3].x * canvas.width, y: emitters[3].y * canvas.height, dx, dy, color: colorFromPalette('trebleA', intensity) });
+    splatStack.push({ x: emitters[3].x * canvas.width, y: emitters[3].y * canvas.height, dx,     dy,      color: colorFromPalette('trebleA', intensity) });
     splatStack.push({ x: emitters[4].x * canvas.width, y: emitters[4].y * canvas.height, dx: -dx, dy: -dy, color: colorFromPalette('trebleB', intensity) });
   }
-  
+
   lastSubBass = subBass; lastBass = bass; lastMid = mid;
 }
 
@@ -1413,4 +1458,3 @@ try {
   console.error('✗ update Fehler:', e);
 }
 
-console.log('=== Initialisierung abgeschlossen ===');
