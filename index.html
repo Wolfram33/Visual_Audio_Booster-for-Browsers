@@ -55,6 +55,15 @@
             z-index: 2;
             pointer-events: none;
         }
+
+        /* Spektrum-Balken am unteren Rand; Größe wird per JS gesetzt (kein CSS-Scaling) */
+        #spectrumCanvas {
+            position: fixed;
+            left: 0; bottom: 0;
+            display: block;
+            z-index: 3;
+            pointer-events: none;
+        }
         
         .hidden { display: none; }
 
@@ -206,6 +215,7 @@
     <div id="backgroundContainer"></div>
     <canvas id="fluidCanvas"></canvas>
     <canvas id="overlayCanvas"></canvas>
+    <canvas id="spectrumCanvas"></canvas>
     
     <div class="track-info" id="trackInfo">📁 Audio oder Playlist laden zum Starten</div>
     <audio id="audioPlayer"></audio>
@@ -216,6 +226,7 @@
         <button id="playBtn" class="btn-nav">▶️ Play</button>
         <button id="stopBtn" class="btn-stop" title="Stopp">⏹️ Stopp</button>
         <button id="nextBtn" class="btn-nav" title="Nächster Titel">⏭️</button>
+        <button id="spectrumBtn" class="btn-tool" title="Spektrum-Balken ein/aus">📊 Balken</button>
         <button id="paletteBtn" class="btn-tool">🎨 Farben</button>
         <button id="bgBtn" class="btn-tool">🖼️ Hintergrund</button>
         <input type="file" id="audioFiles" class="hidden" accept="audio/*,.m3u,.m3u8,.pls,.asx,.xspf" multiple>

@@ -57,6 +57,7 @@ Keine Abhängigkeiten oder Build-Tools erforderlich — reines HTML/CSS/JavaScri
 | ▶️ / ⏸️ | Abspielen / Pause |
 | ⏹️ Stopp | Wiedergabe stoppen und auf den Anfang zurückspulen |
 | ⏭️ | Nächster Track |
+| 📊 Balken | Spektrum-Balken-Overlay ein-/ausblenden |
 | 🎨 Farben | Farb-Panel ein-/ausblenden |
 | 🖼️ Hintergrund | Hintergrundbild-Panel ein-/ausblenden |
 | Ziehen mit Maus/Touch | In die Flüssigkeit zeichnen |
@@ -65,6 +66,10 @@ Keine Abhängigkeiten oder Build-Tools erforderlich — reines HTML/CSS/JavaScri
 
 **Neueste Version**
 
+- Spektrum-Balken-Overlay (📊 Balken): Dynamische Frequenzanzeige am unteren Rand über einen eigenen Analyser (fftSize 512), die jeden Frame das Spektrum abbildet. Die Lautstärke steuert die Helligkeit, der Frequenzbereich den Farbton (Blau→Orange). Ein-/ausblendbar und in `localStorage` gespeichert.
+- FFT-Auflösung fix auf 4096 (≈11 Hz/Bin): Die Frequenzauflösung hängt nicht mehr von der Bildschirmauflösung ab – stabile Bass-/Beat-Erkennung auf allen Geräten.
+- Standard-Palette: Sub-Band jetzt schwarz statt rot.
+- Volle Rhythmus-Sequenz sichtbar: Eigene Onset-Erkennung für Snare/Clap-Backbeat (180–450 Hz) und HiHats (Höhen) ergänzt den Kick. Mitten und Höhen reagieren jetzt kontinuierlich (deutlich gesenkte Schwellen), sodass auch die melodische Ebene und die schnellen Schläge dargestellt werden.
 - Kick-basierte Beat-Detection: Der dominante Hauptbeat wird über ein eigenes Bassdrum-Band (50–120 Hz) erkannt – mit adaptiver Schwelle (laufender Mittelwert + Standardabweichung) und Refraktärzeit gegen Doppeltrigger. Fein justierbar über `KICK_SENSITIVITY`, `KICK_REFRACTORY`, `KICK_PUMP` und `KICK_FORCE`.
 - Auflösungsunabhängige Frequenzbänder: Bänder werden in Hertz definiert und intern auf die aktuelle `fftSize`/`sampleRate` gemappt – gleiches Verhalten unabhängig von der Bildschirmauflösung.
 - Stopp-Button: Pausiert die Wiedergabe und spult auf den Anfang zurück (Play startet den Track wieder von vorne).
@@ -76,7 +81,6 @@ Keine Abhängigkeiten oder Build-Tools erforderlich — reines HTML/CSS/JavaScri
 
 - Farb-Panel: Live anpassbare Palette für Overlay (inkl. Alpha) und Fluid.
 - Persistenz: Speichert Benutzerfarben in `localStorage` und lädt sie beim Start.
-- Adaptive FFT: `analyser.fftSize` passt sich der Bildschirmauflösung an (512/1024/2048/4096).
 - Blau-Intensität (Mid/Treble) verstärkt für bessere Sichtbarkeit.
 - Erweiterte Audio-Unterstützung: mp3, flac, wav, ogg/oga, m4a/aac, opus, weba.
 - Native Playlist-Unterstützung: m3u/m3u8, pls, asx, xspf (lokale Einträge werden mit hochgeladenen Dateien abgeglichen; Remote-URLs werden direkt verwendet).

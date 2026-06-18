@@ -5,6 +5,8 @@ let audioContext = null;
 let analyser = null;
 let dataArray = null;
 let timeDataArray = null;
+let spectrumAnalyser = null;   // separater, hochauflösender Analyser nur für die Balken
+let spectrumData = null;
 let audioActive = false;
 let playlist = [];
 let currentTrackIndex = 0;
@@ -19,9 +21,10 @@ let emitters = [
 ];
 
 // Beat-Detection
-let lastSubBass = 0, lastBass = 0, lastMid = 0;
-let subBassEnergy = 0, bassEnergy = 0;
+let bassEnergy = 0;
 let kickEnergy = 0;
+let snareEnergy = 0, hatEnergy = 0;
+let spectrumVisible = true;   // Spektrum-Balken-Overlay (Wert kommt aus localStorage)
 
 // === Beat-Tuning: hier drehen, wenn der Haupt-Beat staerker/schwaecher wirken soll ===
 const KICK_SENSITIVITY = 1.15; // niedriger = Kick wird oefter/zuverlaessiger erkannt (war 1.4)
@@ -76,7 +79,7 @@ const defaultPalette = {
     }
   },
   fluid: {
-    sub: { base: [8, 0.5, 2] },
+    sub: { base: [0, 0, 0] },
     bassA: { base: [6, 0.3, 1.5] },
     bassB: { base: [5, 0.2, 4] },
     mid: { base: [0.3, 0.2, 3.6] },
@@ -126,7 +129,9 @@ function withAlphaFromRgba(hex, rgbaStr){ const {a} = parseRgba(rgbaStr); const 
 
 const fluidStrength = {};
 Object.keys(defaultPalette.fluid).forEach(k=>{
-  const v = defaultPalette.fluid[k].base; fluidStrength[k] = Math.hypot(v[0],v[1],v[2]) || 1;
+  // Stärke = Länge des Default-Vektors. Schwarz (Länge 0) bekommt einen sinnvollen
+  // Fallback, damit eine selbst gewählte Farbe für dieses Band nicht zu blass wird.
+  const v = defaultPalette.fluid[k].base; fluidStrength[k] = Math.hypot(v[0],v[1],v[2]) || 8;
 });
 function baseToHex(base){ const len = Math.hypot(base[0],base[1],base[2])||1; const dir=[base[0]/len, base[1]/len, base[2]/len]; return rgbToHex(dir[0]*255, dir[1]*255, dir[2]*255); }
 function hexToBase(hex, key){ const {r,g,b} = hexToRgb(hex); const v=[r/255, g/255, b/255]; const l=Math.hypot(v[0],v[1],v[2])||1; const unit=[v[0]/l, v[1]/l, v[2]/l]; const s = fluidStrength[key]||1; return [unit[0]*s, unit[1]*s, unit[2]*s]; }
@@ -142,6 +147,9 @@ function loadCircleAmplitude(){
   return 3.75;
 }
 function saveCircleAmplitude(){ try{ localStorage.setItem('vab_waveformAmplitude', String(waveformAmplitude)); }catch(e){} }
+
+function loadSpectrumVisible(){ try{ const v = localStorage.getItem('vab_spectrum'); if (v !== null) return v === '1'; }catch(e){} return true; }
+function saveSpectrumVisible(){ try{ localStorage.setItem('vab_spectrum', spectrumVisible ? '1' : '0'); }catch(e){} }
 
 // ========== BACKGROUND IMAGE ==========
 let bgImageData = null;
@@ -380,25 +388,24 @@ function initAudioContext() {
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
   analyser = audioContext.createAnalyser();
   
-  // FFT-Größe automatisch an Bildschirmauflösung anpassen
-  const screenPixels = window.innerWidth * window.innerHeight;
-  let fftSize;
-  if (screenPixels < 921600) { // < HD (1280x720)
-    fftSize = 512;
-  } else if (screenPixels < 2073600) { // < Full HD (1920x1080)
-    fftSize = 1024;
-  } else if (screenPixels < 8294400) { // < 4K (3840x2160)
-    fftSize = 2048;
-  } else { // 4K und größer
-    fftSize = 4096;
-  }
-  
-  analyser.fftSize = fftSize;
+  // FFT-Größe = FREQUENZ-Auflösung (nicht Bildschirmauflösung!):
+  //   2048 -> 1024 Bins (~21 Hz/Bin), 4096 -> 2048 Bins (~11 Hz/Bin).
+  // Fix auf 4096 für saubere Bass-/Beat-Auflösung auf allen Geräten.
+  analyser.fftSize = 4096;
   analyser.minDecibels = -100;
   analyser.maxDecibels = -30;
   analyser.smoothingTimeConstant = 0.55;
   dataArray = new Uint8Array(analyser.frequencyBinCount);
   timeDataArray = new Uint8Array(analyser.frequencyBinCount);
+
+  // Eigener Analyser für die Spektrum-Balken: bewusst kleine FFT (512) – kräftige
+  // Pegel pro Bin, direkte/lebendige Balken; Smoothing 0.8 gegen Zittern.
+  spectrumAnalyser = audioContext.createAnalyser();
+  spectrumAnalyser.fftSize = 512;
+  spectrumAnalyser.minDecibels = -90;
+  spectrumAnalyser.maxDecibels = -30;
+  spectrumAnalyser.smoothingTimeConstant = 0.8;
+  spectrumData = new Uint8Array(spectrumAnalyser.frequencyBinCount);
 }
 
 // Bänder werden in Hertz definiert und intern auf die aktuelle
@@ -442,8 +449,10 @@ function makeBeatDetector(historyLen = 43, sensitivity = 1.4, refractoryMs = 180
 }
 
 // Ein Detektor pro relevantem Band:
-const kickDetector = makeBeatDetector(43, KICK_SENSITIVITY, KICK_REFRACTORY); // dominanter Beat
-const bassDetector = makeBeatDetector(43, 1.5, 160);  // Bass / Snare-Körper
+const kickDetector  = makeBeatDetector(43, KICK_SENSITIVITY, KICK_REFRACTORY); // dominanter Beat
+const bassDetector  = makeBeatDetector(43, 1.5, 160);  // Bass
+const snareDetector = makeBeatDetector(43, 1.6, 120);  // Snare/Clap-Backbeat (Folge-Sequenz)
+const hatDetector   = makeBeatDetector(30, 1.4, 70);   // HiHat-Sequenz (schnelle Schläge)
 
 function getAvg(values) {
   let value = 0;
@@ -456,6 +465,15 @@ function getAvg(values) {
 let canvas = document.getElementById("fluidCanvas");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+// ========== SPEKTRUM-BALKEN CANVAS ==========
+let spectrumCanvas = document.getElementById("spectrumCanvas");
+let specCtx = spectrumCanvas.getContext("2d");
+function resizeSpectrumCanvas() {
+  spectrumCanvas.width = window.innerWidth;
+  spectrumCanvas.height = Math.round(Math.min(240, window.innerHeight * 0.34)); // Höhe der Balken-Zone
+}
+resizeSpectrumCanvas();
 
 let config = {
   TEXTURE_DOWNSAMPLE: 1,
@@ -972,6 +990,7 @@ function update() {
   if (audioActive && analyser && dataArray) {
     analyser.getByteFrequencyData(dataArray);
     analyser.getByteTimeDomainData(timeDataArray);
+    if (spectrumAnalyser && spectrumData) spectrumAnalyser.getByteFrequencyData(spectrumData);
     
     // Durchschnitt berechnen
     avg = getAvg([...dataArray].slice(0, 256));
@@ -989,24 +1008,29 @@ function processAudioFrame() {
   // --- Bänder in Hz (auflösungsunabhängig) ---
   const subBass = getBandEnergy(20, 50);    // Rumpeln, nur optische Stütze
   const kick    = getBandEnergy(50, 120);   // DER dominante Beat (Bassdrum)
-  const bass    = getBandEnergy(120, 250);  // Bass / Snare-Körper
-  const mid     = getBandEnergy(250, 2000);
-  const treble  = getBandEnergy(2000, 8000);
+  const bass    = getBandEnergy(120, 250);  // Bass
+  const snare   = getBandEnergy(180, 450);  // Snare/Clap-Körper -> Backbeat
+  const mid     = getBandEnergy(250, 2000); // melodische Ebene
+  const treble  = getBandEnergy(2000, 8000);// HiHats / Höhen
 
   const now = performance.now();
 
-  // --- Adaptive Beat-Erkennung ---
-  if (kickDetector.detect(kick, now)) { kickEnergy = KICK_PUMP; } else { kickEnergy *= 0.85; }
-  if (bassDetector.detect(bass, now)) { bassEnergy = 1.3; } else { bassEnergy *= 0.8; }
+  // --- Adaptive Beat-Erkennung pro Spur ---
+  if (kickDetector.detect(kick, now))   { kickEnergy = KICK_PUMP; } else { kickEnergy  *= 0.85; }
+  if (bassDetector.detect(bass, now))   { bassEnergy = 1.3; }      else { bassEnergy  *= 0.8;  }
+  if (snareDetector.detect(snare, now)) { snareEnergy = 1.4; }     else { snareEnergy *= 0.82; }
+  if (hatDetector.detect(treble, now))  { hatEnergy = 1.0; }       else { hatEnergy   *= 0.7;  }
 
   // --- Anzeige ---
-  const kickPump = '💥'.repeat(Math.min(Math.floor(kickEnergy * 3), 5));
-  const bassPump = '🔥'.repeat(Math.min(Math.floor(bassEnergy * 3), 4));
+  const kickPump  = '💥'.repeat(Math.min(Math.floor(kickEnergy * 3), 5));
+  const snarePump = '🥁'.repeat(Math.min(Math.floor(snareEnergy * 3), 4));
+  const bassPump  = '🔥'.repeat(Math.min(Math.floor(bassEnergy * 3), 4));
   document.getElementById('trackInfo').innerHTML =
     `🎵 ${currentTrackIndex + 1}/${playlist.length || 1} | ` +
-    `<span style="color:#ff3333">Kick: ${kick.toFixed(0)} ${kickPump}</span> | ` +
-    `<span style="color:#ff8844">Bass: ${bass.toFixed(0)} ${bassPump}</span> | ` +
-    `<span style="color:#44aaff">Mid: ${mid.toFixed(0)}</span>`;
+    `<span style="color:#ff3333">Kick ${kickPump}</span> ` +
+    `<span style="color:#ffd166">Snare ${snarePump}</span> ` +
+    `<span style="color:#ff8844">Bass ${bassPump}</span> ` +
+    `<span style="color:#44aaff">Mid ${mid.toFixed(0)}</span>`;
 
   // --- Emitter bewegen ---
   for (let e of emitters) {
@@ -1091,24 +1115,36 @@ function processAudioFrame() {
     }
   }
 
-  // === MITTEN ===
-  if (mid > 80) {
-    const intensity = Math.min(mid / 500, 0.15);
+  // === SNARE / CLAP: der Backbeat – die Folge-Sequenz nach dem Kick ===
+  if (snareEnergy > 0.25) {
+    const intensity = Math.min(snare / 180, 0.3) * snareEnergy;
+    for (let i = 0; i < 2; i++) {
+      const x = canvas.width * (0.35 + i * 0.3);
+      const y = canvas.height * 0.55;
+      const angle = -Math.PI / 2 + (i === 0 ? -0.45 : 0.45);
+      const force = snare * 1.1 * snareEnergy;
+      splatStack.push({ x, y, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('mid', intensity) });
+    }
+  }
+
+  // === MITTEN: melodische Ebene jetzt kontinuierlich sichtbar (Schwelle stark gesenkt) ===
+  if (mid > 12) {
+    const intensity = Math.min(mid / 300, 0.22);
     const angle = Date.now() * 0.002;
-    const force = mid * 0.08;
+    const force = mid * 0.18;   // kräftiger als zuvor (war 0.08)
     splatStack.push({ x: emitters[2].x * canvas.width, y: emitters[2].y * canvas.height, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('mid', intensity) });
   }
 
-  // === HÖHEN ===
-  if (treble > 80) {
-    const intensity = Math.min(treble / 500, 0.12);
-    const dx = (Math.random() - 0.5) * treble * 0.05;
-    const dy = (Math.random() - 0.5) * treble * 0.05;
+  // === HÖHEN / HIHATS: feine, häufige Funken – die schnelle Sequenz (Schwelle gesenkt) ===
+  if (treble > 10) {
+    const sparkle = 1 + hatEnergy * 2.2;   // HiHat-Onset gibt extra Funken
+    const intensity = Math.min(treble / 300, 0.18) * sparkle;
+    const dx = (Math.random() - 0.5) * treble * 0.12 * sparkle;
+    const dy = (Math.random() - 0.5) * treble * 0.12 * sparkle;
     splatStack.push({ x: emitters[3].x * canvas.width, y: emitters[3].y * canvas.height, dx,     dy,      color: colorFromPalette('trebleA', intensity) });
     splatStack.push({ x: emitters[4].x * canvas.width, y: emitters[4].y * canvas.height, dx: -dx, dy: -dy, color: colorFromPalette('trebleB', intensity) });
   }
 
-  lastSubBass = subBass; lastBass = bass; lastMid = mid;
 }
 
 function fluidUpdate() {
@@ -1188,14 +1224,46 @@ function fluidUpdate() {
   blit(null);
 }
 
+// Präzise Spektrum-Balken (wie in einem Player): log-skalierte Frequenz-Bins,
+// jeder Frame neu gezeichnet. Bildet den Sound 1:1 ab, unabhängig vom Fluid.
+// === Spektrum-Balken: schlanke, dynamische Variante ===
+// Lineare 1:1-Zuordnung Bin -> Balken (fftSize 512), volle Höhenabbildung ohne
+// Kompression. Bewusst einfach gehalten – das wirkt am direktesten und lebendigsten.
+const SPECTRUM_BAR_SPREAD = 2.5;  // Breitenfaktor: Bass/Mitten füllen die volle Breite
+
+function drawSpectrumBars() {
+  if (!spectrumVisible || !spectrumAnalyser || !audioActive || !spectrumData) {
+    specCtx.clearRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+    return;
+  }
+  const cW = spectrumCanvas.width, cH = spectrumCanvas.height;
+  specCtx.clearRect(0, 0, cW, cH);
+
+  const len = spectrumData.length;                   // 256 Bins bei fftSize 512
+  const barWidth = (cW / len) * SPECTRUM_BAR_SPREAD; // breitere Balken mit Lücken
+  let x = 0;
+  for (let i = 0; i < len && x < cW; i++) {
+    const value = spectrumData[i];                   // 0..255
+    const barH = (value / 255) * cH;                 // volle Höhe, keine Kompression
+    // Frequenz -> Farbton (Blau..Orange über die sichtbare Breite), Lautstärke -> Helligkeit.
+    // Kein Rosa/Pink/Lila (Regel 6).
+    const hue = 210 - (x / cW) * 180;
+    const light = 28 + (value / 255) * 42;
+    specCtx.fillStyle = `hsl(${hue.toFixed(0)}, 85%, ${light.toFixed(0)}%)`;
+    specCtx.fillRect(x, cH - barH, barWidth, barH);
+    x += barWidth + 1;                               // 1px Abstand
+  }
+}
+
 function drawOverlayFrame() {
   overlayCtx.clearRect(0, 0, w, h);
-  
+
   if (avg_circle) {
     drawAverageCircle();
   }
-  
+
   drawWaveform();
+  drawSpectrumBars();
 }
 
 // ========== PLAYLIST ==========
@@ -1298,6 +1366,7 @@ async function loadPlaylist(event) {
   if (!audioPlayer.dataset.connected) {
     const source = audioContext.createMediaElementSource(audioPlayer);
     source.connect(analyser);
+    if (spectrumAnalyser) source.connect(spectrumAnalyser);
     source.connect(audioContext.destination);
     audioPlayer.dataset.connected = 'true';
     
@@ -1344,6 +1413,13 @@ function stopPlayback() {
   if (btn) btn.textContent = '▶️ Play';
 }
 
+function toggleSpectrum() {
+  spectrumVisible = !spectrumVisible;
+  saveSpectrumVisible();
+  const btn = document.getElementById('spectrumBtn');
+  if (btn) btn.classList.toggle('active', spectrumVisible);
+}
+
 // Alle Bedienelemente per Event-Listener verdrahten (Regel 4: keine Inline-on*-Handler)
 function setupControls() {
   const onClick = (id, handler) => {
@@ -1367,6 +1443,14 @@ function setupControls() {
 
   const bgModeSel = document.getElementById('bgMode');
   if (bgModeSel) bgModeSel.addEventListener('change', (e) => setBgMode(e.target.value));
+
+  // Spektrum-Balken: gespeicherte Sichtbarkeit laden + Toggle verdrahten
+  spectrumVisible = loadSpectrumVisible();
+  const spectrumBtn = document.getElementById('spectrumBtn');
+  if (spectrumBtn) {
+    spectrumBtn.classList.toggle('active', spectrumVisible);
+    spectrumBtn.addEventListener('click', toggleSpectrum);
+  }
 }
 
 // ========== RESIZE HANDLER ==========
@@ -1382,7 +1466,9 @@ window.addEventListener('resize', () => {
   h = window.innerHeight;
   cx = w / 2;
   cy = h / 2;
-  
+
+  resizeSpectrumCanvas();
+
   points.forEach(p => p.updateDynamics());
   if (avg_circle) avg_circle.update();
 });
