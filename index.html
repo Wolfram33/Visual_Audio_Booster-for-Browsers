@@ -56,28 +56,52 @@
             pointer-events: none;
         }
         
+        .hidden { display: none; }
+
         .controls {
             position: fixed;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
+            flex-wrap: wrap;          /* Regel 7: bricht auf kleinen Screens um */
+            justify-content: center;
             gap: 10px;
+            max-width: 95vw;
             z-index: 100;
             background: rgba(0,0,0,0.7);
             padding: 12px 20px;
             border-radius: 12px;
         }
-        .controls button {
-            background: rgba(255,255,255,0.15);
-            border: 1px solid rgba(255,255,255,0.3);
+        /* Gemeinsame Button-Geometrie – Farbe kommt aus den Funktions-Klassen */
+        .controls button,
+        .palette-actions button,
+        .bg-panel button {
             color: #fff;
-            padding: 10px 16px;
+            border: 1px solid rgba(255,255,255,0.25);
             border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
+            padding: 10px 16px;
+            min-height: 40px;         /* Regel 7: touch-freundlich */
+            transition: background-color 0.15s ease, transform 0.05s ease;
         }
-        .controls button:hover { background: rgba(255,255,255,0.25); }
+        .controls button:active,
+        .palette-actions button:active,
+        .bg-panel button:active { transform: translateY(1px); }
+
+        /* Funktions-Farben (Regel 5/6): Grün = Laden, Blau = Navigation/Bestätigen,
+           Orange = Stopp/Entfernen, Braun = Werkzeuge/Auswahl. Kein Rosa/Pink/Lila. */
+        .btn-load  { background: #2e9e5b; border-color: #41c277; }
+        .btn-load:hover  { background: #39bd6d; }
+        .btn-nav   { background: #2f72b8; border-color: #4791db; }
+        .btn-nav:hover   { background: #3d8ad6; }
+        .btn-stop  { background: #db8133; border-color: #f0a04a; }
+        .btn-stop:hover  { background: #ee9740; }
+        .btn-tool  { background: #8a6a47; border-color: #ac8657; }
+        .btn-tool:hover  { background: #a07c52; }
+        /* Aktiver/ausgewählter Zustand klar sichtbar (Regel 5) */
+        .btn-tool.active { background: #a07c52; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.55); }
         
         .track-info {
             position: fixed;
@@ -118,8 +142,6 @@
         .palette-panel label { font-size: 12px; opacity: 0.9; }
         .palette-panel input[type="color"] { width: 36px; height: 24px; border: none; background: transparent; padding: 0; }
         .palette-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
-        .palette-actions button { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-        .palette-actions button:hover { background: rgba(255,255,255,0.25); }
 
         /* Background Bild Container - LIEGT ÜBER DEM FLUID */
         #backgroundContainer {
@@ -164,12 +186,12 @@
         .bg-panel .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0; }
         .bg-panel label { font-size: 12px; opacity: 0.9; }
         .bg-panel select, .bg-panel input[type="range"] { flex: 1; }
-        .bg-panel select { 
-            background: rgba(40,40,40,0.95); 
-            border: 1px solid rgba(255,255,255,0.3); 
-            color: #fff; 
-            padding: 6px 8px; 
-            border-radius: 6px; 
+        .bg-panel select {
+            background: #6f583c;   /* Auswahl-Feld hebt sich ab (Regel 5) */
+            border: 1px solid #ac8657;
+            color: #fff;
+            padding: 6px 8px;
+            border-radius: 6px;
         }
         .bg-panel select option {
             background: #333;
@@ -177,8 +199,7 @@
         }
         .bg-panel .preview { width: 100%; height: 60px; background: rgba(255,255,255,0.1); border-radius: 6px; margin: 8px 0; background-size: contain; background-repeat: no-repeat; background-position: center; }
         .bg-panel .btn-row { display: flex; gap: 8px; margin-top: 10px; }
-        .bg-panel button { flex: 1; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-        .bg-panel button:hover { background: rgba(255,255,255,0.25); }
+        .bg-panel button { flex: 1; }
     </style>
 </head>
 <body>
@@ -190,13 +211,14 @@
     <audio id="audioPlayer"></audio>
     
     <div class="controls">
-        <button onclick="document.getElementById('audioFiles').click()">📁 Audio/Playlist laden</button>
-        <button onclick="prevTrack()">⏮️</button>
-        <button id="playBtn" onclick="togglePlay()">▶️ Play</button>
-        <button onclick="nextTrack()">⏭️</button>
-        <button onclick="togglePalette()">🎨 Farben</button>
-        <button onclick="toggleBgPanel()">🖼️ Hintergrund</button>
-        <input type="file" id="audioFiles" style="display:none" accept="audio/*,.m3u,.m3u8,.pls,.asx,.xspf" multiple onchange="loadPlaylist(event)">
+        <button id="loadBtn" class="btn-load">📁 Audio/Playlist laden</button>
+        <button id="prevBtn" class="btn-nav" title="Vorheriger Titel">⏮️</button>
+        <button id="playBtn" class="btn-nav">▶️ Play</button>
+        <button id="stopBtn" class="btn-stop" title="Stopp">⏹️ Stopp</button>
+        <button id="nextBtn" class="btn-nav" title="Nächster Titel">⏭️</button>
+        <button id="paletteBtn" class="btn-tool">🎨 Farben</button>
+        <button id="bgBtn" class="btn-tool">🖼️ Hintergrund</button>
+        <input type="file" id="audioFiles" class="hidden" accept="audio/*,.m3u,.m3u8,.pls,.asx,.xspf" multiple>
     </div>
 
     <div id="palettePanel" class="palette-panel">
@@ -230,8 +252,8 @@
             <div class="row"><label for="trebleBColor">Treble B</label><input type="color" id="trebleBColor"></div>
         </div>
         <div class="palette-actions">
-            <button onclick="resetPalette()">Zurücksetzen</button>
-            <button onclick="togglePalette()">Schließen</button>
+            <button id="paletteResetBtn" class="btn-tool">Zurücksetzen</button>
+            <button id="paletteCloseBtn" class="btn-nav">Schließen</button>
         </div>
     </div>
 
@@ -240,7 +262,7 @@
         <div class="preview" id="bgPreview"></div>
         <div class="row">
             <label for="bgMode">Darstellung</label>
-            <select id="bgMode" onchange="setBgMode(this.value)">
+            <select id="bgMode">
                 <option value="cover">Füllen (Cover)</option>
                 <option value="stretch">Strecken</option>
                 <option value="contain">Einpassen</option>
@@ -248,12 +270,12 @@
             </select>
         </div>
         <div class="btn-row">
-            <button id="bgSelectBtn">📁 Bild wählen</button>
-            <button onclick="clearBackground()">🗑️ Entfernen</button>
+            <button id="bgSelectBtn" class="btn-load">📁 Bild wählen</button>
+            <button id="bgClearBtn" class="btn-stop">🗑️ Entfernen</button>
         </div>
-        <input type="file" id="bgImageFile" style="display:none" accept="image/*">
+        <input type="file" id="bgImageFile" class="hidden" accept="image/*">
         <div class="btn-row">
-            <button onclick="toggleBgPanel()">Schließen</button>
+            <button id="bgCloseBtn" class="btn-nav">Schließen</button>
         </div>
     </div>
 

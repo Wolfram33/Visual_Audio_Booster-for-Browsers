@@ -23,6 +23,12 @@ let lastSubBass = 0, lastBass = 0, lastMid = 0;
 let subBassEnergy = 0, bassEnergy = 0;
 let kickEnergy = 0;
 
+// === Beat-Tuning: hier drehen, wenn der Haupt-Beat staerker/schwaecher wirken soll ===
+const KICK_SENSITIVITY = 1.15; // niedriger = Kick wird oefter/zuverlaessiger erkannt (war 1.4)
+const KICK_REFRACTORY  = 150;  // ms Mindestabstand zwischen zwei Kicks (niedriger = schnellere Beats moeglich)
+const KICK_PUMP        = 2.3;  // Energie-Stoss pro erkanntem Kick (hoeher = dominanterer Hauptbeat)
+const KICK_FORCE       = 2.1;  // Groessen-/Kraft-Multiplikator der zentralen Kick-Ausschlaege
+
 // ========== OVERLAY VARIABLEN (Waveform + Avg Circle) ==========
 const waveform_color = "rgba(26, 26, 28, 0.38)";
 const waveform_color_2 = "rgba(250, 246, 5, 0.18)";
@@ -190,38 +196,6 @@ function applyBackground(){
   }
 }
 
-function loadBackgroundImage(event){
-  console.log('loadBackgroundImage aufgerufen', event);
-  const files = event.target.files;
-  console.log('Files:', files);
-  if (!files || files.length === 0) {
-    console.log('Keine Dateien ausgewählt');
-    return;
-  }
-  const file = files[0];
-  console.log('Datei:', file.name, file.type);
-  
-  if (!file.type.startsWith('image/')) {
-    console.log('Keine Bilddatei');
-    return;
-  }
-  
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    console.log('FileReader fertig, Datenlänge:', e.target.result.length);
-    bgImageData = e.target.result;
-    applyBackground();
-    saveBgSettings();
-  };
-  reader.onerror = function(e) {
-    console.error('FileReader Fehler:', e);
-  };
-  reader.readAsDataURL(file);
-  
-  // Input zurücksetzen für erneutes Laden derselben Datei
-  event.target.value = '';
-}
-
 function setBgMode(mode){
   bgMode = mode;
   applyBackground();
@@ -237,7 +211,9 @@ function clearBackground(){
 function toggleBgPanel(){
   const el = document.getElementById('bgPanel');
   if (!el) return;
-  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+  const show = (el.style.display === 'none' || !el.style.display);
+  el.style.display = show ? 'block' : 'none';
+  const btn = document.getElementById('bgBtn'); if (btn) btn.classList.toggle('active', show);
 }
 
 function initBackgroundUI(){
@@ -294,11 +270,6 @@ function initBackgroundUI(){
     });
   }
   
-  // Globale Funktionen für onclick-Handler
-  window.loadBackgroundImage = loadBackgroundImage;
-  window.setBgMode = setBgMode;
-  window.clearBackground = clearBackground;
-  window.toggleBgPanel = toggleBgPanel;
 }
 
 let palette = loadPalette();
@@ -307,7 +278,12 @@ function colorFromPalette(key, scale){
   const b = palette.fluid[key].base; const s = scale||1; return [b[0]*s, b[1]*s, b[2]*s];
 }
 
-function togglePalette(){ const el = document.getElementById('palettePanel'); if (!el) return; el.style.display = (el.style.display==='none' || !el.style.display)? 'block':'none'; }
+function togglePalette(){
+  const el = document.getElementById('palettePanel'); if (!el) return;
+  const show = (el.style.display==='none' || !el.style.display);
+  el.style.display = show ? 'block':'none';
+  const btn = document.getElementById('paletteBtn'); if (btn) btn.classList.toggle('active', show);
+}
 function resetPalette(){ palette = loadPalette(); palette = deepClone(defaultPalette); savePalette(); applyPaletteToInputs(); }
 function applyPaletteToInputs(){
   const ids = {
@@ -340,8 +316,6 @@ function applyPaletteToInputs(){
   Object.entries(fids).forEach(([id, base])=>{ const el = document.getElementById(id); if (el) el.value = baseToHex(base); });
 }
 function setupPaletteUI(){
-  // Bind global toggles
-  window.togglePalette = togglePalette; window.resetPalette = resetPalette;
   applyPaletteToInputs();
   // Overlay handlers
   const bindOverlay = (id, path)=>{
@@ -468,7 +442,7 @@ function makeBeatDetector(historyLen = 43, sensitivity = 1.4, refractoryMs = 180
 }
 
 // Ein Detektor pro relevantem Band:
-const kickDetector = makeBeatDetector();              // dominanter Beat
+const kickDetector = makeBeatDetector(43, KICK_SENSITIVITY, KICK_REFRACTORY); // dominanter Beat
 const bassDetector = makeBeatDetector(43, 1.5, 160);  // Bass / Snare-Körper
 
 function getAvg(values) {
@@ -1022,7 +996,7 @@ function processAudioFrame() {
   const now = performance.now();
 
   // --- Adaptive Beat-Erkennung ---
-  if (kickDetector.detect(kick, now)) { kickEnergy = 1.5; } else { kickEnergy *= 0.85; }
+  if (kickDetector.detect(kick, now)) { kickEnergy = KICK_PUMP; } else { kickEnergy *= 0.85; }
   if (bassDetector.detect(bass, now)) { bassEnergy = 1.3; } else { bassEnergy *= 0.8; }
 
   // --- Anzeige ---
@@ -1044,7 +1018,7 @@ function processAudioFrame() {
   // === KICK: der dominante Beat treibt die großen Ausschläge ===
   if (kick > 15) {
     const intensity = Math.min(kick / 220, 0.3);
-    const explosionPower = 1 + kickEnergy * 1.5;
+    const explosionPower = 1 + kickEnergy * 1.5 * KICK_FORCE;
     const centerX = canvas.width * 0.5;
     const centerY = canvas.height * 0.98;
 
@@ -1359,12 +1333,41 @@ function playCurrentTrack() {
 function nextTrack() { if (!playlist.length) return; currentTrackIndex = (currentTrackIndex + 1) % playlist.length; playCurrentTrack(); }
 function prevTrack() { if (!playlist.length) return; currentTrackIndex = (currentTrackIndex - 1 + playlist.length) % playlist.length; playCurrentTrack(); }
 function togglePlay() { const audioPlayer = document.getElementById('audioPlayer'); if (audioPlayer.paused) audioPlayer.play(); else audioPlayer.pause(); }
+function stopPlayback() {
+  const audioPlayer = document.getElementById('audioPlayer');
+  if (!audioPlayer) return;
+  audioPlayer.pause();
+  // Auf Anfang zurücksetzen – Play startet den Track wieder von vorne
+  try { audioPlayer.currentTime = 0; } catch (e) {}
+  audioActive = false;
+  const btn = document.getElementById('playBtn');
+  if (btn) btn.textContent = '▶️ Play';
+}
 
-// Globale Funktionen für HTML onclick-Handler
-window.loadPlaylist = loadPlaylist;
-window.togglePlay = togglePlay;
-window.nextTrack = nextTrack;
-window.prevTrack = prevTrack;
+// Alle Bedienelemente per Event-Listener verdrahten (Regel 4: keine Inline-on*-Handler)
+function setupControls() {
+  const onClick = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', handler);
+  };
+  onClick('loadBtn',  () => { const i = document.getElementById('audioFiles'); if (i) i.click(); });
+  onClick('prevBtn',  prevTrack);
+  onClick('playBtn',  togglePlay);
+  onClick('stopBtn',  stopPlayback);
+  onClick('nextBtn',  nextTrack);
+  onClick('paletteBtn', togglePalette);
+  onClick('bgBtn',      toggleBgPanel);
+  onClick('paletteResetBtn', resetPalette);
+  onClick('paletteCloseBtn', togglePalette);
+  onClick('bgClearBtn',      clearBackground);
+  onClick('bgCloseBtn',      toggleBgPanel);
+
+  const audioInput = document.getElementById('audioFiles');
+  if (audioInput) audioInput.addEventListener('change', loadPlaylist);
+
+  const bgModeSel = document.getElementById('bgMode');
+  if (bgModeSel) bgModeSel.addEventListener('change', (e) => setBgMode(e.target.value));
+}
 
 // ========== RESIZE HANDLER ==========
 window.addEventListener('resize', () => {
@@ -1449,6 +1452,13 @@ try {
   console.log('✓ initBackgroundUI erfolgreich');
 } catch(e) {
   console.error('✗ initBackgroundUI Fehler:', e);
+}
+
+try {
+  setupControls();
+  console.log('✓ setupControls erfolgreich');
+} catch(e) {
+  console.error('✗ setupControls Fehler:', e);
 }
 
 try {
