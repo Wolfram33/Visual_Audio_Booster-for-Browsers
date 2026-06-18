@@ -80,6 +80,7 @@ const defaultPalette = {
   },
   fluid: {
     sub: { base: [0, 0, 0] },
+    kick: { base: [8, 0.5, 2] },
     bassA: { base: [6, 0.3, 1.5] },
     bassB: { base: [5, 0.2, 4] },
     mid: { base: [0.3, 0.2, 3.6] },
@@ -315,6 +316,7 @@ function applyPaletteToInputs(){
   Object.entries(alphaMap).forEach(([id, rgba])=>{ const el = document.getElementById(id); if (el) el.value = String(parseRgba(rgba).a); });
   const fids = {
     subColor: palette.fluid.sub.base,
+    kickColor: palette.fluid.kick.base,
     bassAColor: palette.fluid.bassA.base,
     bassBColor: palette.fluid.bassB.base,
     midColor: palette.fluid.mid.base,
@@ -367,6 +369,7 @@ function setupPaletteUI(){
     });
   };
   bindFluid('subColor', 'sub');
+  bindFluid('kickColor', 'kick');
   bindFluid('bassAColor', 'bassA');
   bindFluid('bassBColor', 'bassB');
   bindFluid('midColor', 'mid');
@@ -1050,7 +1053,7 @@ function processAudioFrame() {
       x: centerX, y: centerY,
       dx: (Math.random() - 0.5) * 15 * explosionPower,
       dy: -kick * 1.5 * explosionPower,
-      color: colorFromPalette('sub', intensity * explosionPower)
+      color: colorFromPalette('kick', intensity * explosionPower)
     });
 
     if (kickEnergy > 0.3) {
@@ -1071,12 +1074,12 @@ function processAudioFrame() {
         const y = canvas.height * (0.7 + Math.random() * 0.25);
         const angle = -Math.PI * (0.3 + Math.random() * 0.4);
         const force = kick * 1.2 * kickEnergy * (0.5 + Math.random());
-        splatStack.push({ x, y, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('sub', intensity * kickEnergy) });
+        splatStack.push({ x, y, dx: Math.cos(angle) * force, dy: Math.sin(angle) * force, color: colorFromPalette('kick', intensity * kickEnergy) });
       }
 
       if (kickEnergy > 0.8) {
         for (let i = 0; i < 3; i++) {
-          splatStack.push({ x: canvas.width * (0.3 + i * 0.2), y: canvas.height * 0.99, dx: (Math.random() - 0.5) * 8, dy: -kick * 2.5 * kickEnergy, color: colorFromPalette('sub', kickEnergy) });
+          splatStack.push({ x: canvas.width * (0.3 + i * 0.2), y: canvas.height * 0.99, dx: (Math.random() - 0.5) * 8, dy: -kick * 2.5 * kickEnergy, color: colorFromPalette('kick', kickEnergy) });
         }
       }
     }
