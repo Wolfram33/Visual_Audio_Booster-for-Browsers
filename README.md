@@ -55,10 +55,24 @@ Keine Abhängigkeiten oder Build-Tools erforderlich — reines HTML/CSS/JavaScri
 | 📁 Audio/Playlist laden | Audiodateien (mp3, flac, wav, ogg/oga, m4a/aac, opus, weba) oder Playlist-Dateien (m3u/m3u8, pls, asx, xspf) auswählen |
 | ⏮️ | Vorheriger Track |
 | ▶️ / ⏸️ | Abspielen / Pause |
+| ⏹️ Stopp | Wiedergabe stoppen und auf den Anfang zurückspulen |
 | ⏭️ | Nächster Track |
+| 🎨 Farben | Farb-Panel ein-/ausblenden |
+| 🖼️ Hintergrund | Hintergrundbild-Panel ein-/ausblenden |
 | Ziehen mit Maus/Touch | In die Flüssigkeit zeichnen |
 
 ## 🆕 Änderungen
+
+**Neueste Version**
+
+- Kick-basierte Beat-Detection: Der dominante Hauptbeat wird über ein eigenes Bassdrum-Band (50–120 Hz) erkannt – mit adaptiver Schwelle (laufender Mittelwert + Standardabweichung) und Refraktärzeit gegen Doppeltrigger. Fein justierbar über `KICK_SENSITIVITY`, `KICK_REFRACTORY`, `KICK_PUMP` und `KICK_FORCE`.
+- Auflösungsunabhängige Frequenzbänder: Bänder werden in Hertz definiert und intern auf die aktuelle `fftSize`/`sampleRate` gemappt – gleiches Verhalten unabhängig von der Bildschirmauflösung.
+- Stopp-Button: Pausiert die Wiedergabe und spult auf den Anfang zurück (Play startet den Track wieder von vorne).
+- Strikte CSP möglich: Keine Inline-Scripts oder `on*`-Attribute mehr – sämtliche Bedienelemente werden per `addEventListener` verdrahtet, das JavaScript ist vollständig ausgelagert.
+- Klar unterscheidbare Bedienelemente: Funktions-Farben statt Grau-in-Grau (Grün = Laden, Blau = Navigation, Orange = Stopp/Entfernen, Braun = Werkzeuge/Auswahl) mit sichtbarem Aktiv-Zustand.
+- Responsive Bedienleiste: Bricht auf kleinen Bildschirmen um, touch-freundliche Buttongrößen.
+
+**Frühere Änderungen**
 
 - Farb-Panel: Live anpassbare Palette für Overlay (inkl. Alpha) und Fluid.
 - Persistenz: Speichert Benutzerfarben in `localStorage` und lädt sie beim Start.
