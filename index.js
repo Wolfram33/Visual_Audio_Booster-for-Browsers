@@ -475,6 +475,14 @@ let specCtx = spectrumCanvas.getContext("2d");
 function resizeSpectrumCanvas() {
   spectrumCanvas.width = window.innerWidth;
   spectrumCanvas.height = Math.round(Math.min(240, window.innerHeight * 0.34)); // Höhe der Balken-Zone
+  // Grundlinie über die Bedienelemente/Track-Info heben, damit die Balken nicht
+  // dahinter verschwinden – dynamisch gemessen (klappt auch bei umbrechender Leiste).
+  let reach = 96;
+  ['.controls', '.track-info'].forEach(sel => {
+    const el = document.querySelector(sel);
+    if (el) { const r = el.getBoundingClientRect(); reach = Math.max(reach, window.innerHeight - r.top); }
+  });
+  spectrumCanvas.style.bottom = Math.round(reach + 8) + 'px';
 }
 resizeSpectrumCanvas();
 
@@ -806,6 +814,14 @@ function createDoubleFBO(texId, w, h, internalFormat, format, type, param) {
   };
 }
 
+// GPU-Ressourcen freigeben (sonst Speicherleck bei jedem initFramebuffers/Resize)
+function deleteFBO(t) {
+  if (!t) return;
+  if (t.texture) gl.deleteTexture(t.texture);
+  if (t.fbo) gl.deleteFramebuffer(t.fbo);
+}
+function deleteDoubleFBO(d) { if (!d) return; deleteFBO(d.read); deleteFBO(d.write); }
+
 let clearProgram = new GLProgram(baseVertexShader, clearShader);
 let displayProgram = new GLProgram(baseVertexShader, displayShader);
 let splatProgram = new GLProgram(baseVertexShader, splatShader);
@@ -819,6 +835,10 @@ let gradientSubtractProgram = new GLProgram(baseVertexShader, gradientSubtractSh
 let textureWidth, textureHeight, density, velocity, divergence, curl, pressure;
 
 function initFramebuffers() {
+  // Alte Texturen/Framebuffer zuerst freigeben (verhindert GPU-Speicherleck)
+  deleteDoubleFBO(density); deleteDoubleFBO(velocity); deleteDoubleFBO(pressure);
+  deleteFBO(divergence); deleteFBO(curl);
+
   textureWidth = gl.drawingBufferWidth >> config.TEXTURE_DOWNSAMPLE;
   textureHeight = gl.drawingBufferHeight >> config.TEXTURE_DOWNSAMPLE;
   let texType = ext.texType;
@@ -1227,12 +1247,12 @@ function fluidUpdate() {
   blit(null);
 }
 
-// Präzise Spektrum-Balken (wie in einem Player): log-skalierte Frequenz-Bins,
-// jeder Frame neu gezeichnet. Bildet den Sound 1:1 ab, unabhängig vom Fluid.
-// === Spektrum-Balken: schlanke, dynamische Variante ===
-// Lineare 1:1-Zuordnung Bin -> Balken (fftSize 512), volle Höhenabbildung ohne
-// Kompression. Bewusst einfach gehalten – das wirkt am direktesten und lebendigsten.
-const SPECTRUM_BAR_SPREAD = 2.5;  // Breitenfaktor: Bass/Mitten füllen die volle Breite
+// === Spektrum-Balken: dünne Nadeln, zentrierter Block ===
+// Feste, schmale Balkenbreite (auflösungsunabhängig). Die Balken werden zu einem
+// zentrierten Block gruppiert und nehmen nicht die volle Monitorbreite ein.
+const SPECTRUM_BAR_WIDTH = 4;    // Breite einer Nadel in px
+const SPECTRUM_BAR_GAP   = 2;    // Abstand zwischen den Nadeln in px
+const SPECTRUM_USABLE    = 0.62; // Anteil der Bins, der gezeigt wird (oberste sind meist leer)
 
 function drawSpectrumBars() {
   if (!spectrumVisible || !spectrumAnalyser || !audioActive || !spectrumData) {
@@ -1242,19 +1262,23 @@ function drawSpectrumBars() {
   const cW = spectrumCanvas.width, cH = spectrumCanvas.height;
   specCtx.clearRect(0, 0, cW, cH);
 
-  const len = spectrumData.length;                   // 256 Bins bei fftSize 512
-  const barWidth = (cW / len) * SPECTRUM_BAR_SPREAD; // breitere Balken mit Lücken
-  let x = 0;
-  for (let i = 0; i < len && x < cW; i++) {
-    const value = spectrumData[i];                   // 0..255
-    const barH = (value / 255) * cH;                 // volle Höhe, keine Kompression
-    // Frequenz -> Farbton (Blau..Orange über die sichtbare Breite), Lautstärke -> Helligkeit.
+  const len = spectrumData.length;                              // 256 Bins bei fftSize 512
+  const slot = SPECTRUM_BAR_WIDTH + SPECTRUM_BAR_GAP;
+  const maxBars = Math.max(1, Math.floor((cW * 0.95) / slot));  // nie breiter als der Schirm
+  const nBars = Math.min(Math.floor(len * SPECTRUM_USABLE), maxBars);
+  const blockW = nBars * slot - SPECTRUM_BAR_GAP;
+  const startX = Math.round((cW - blockW) / 2);                 // Block zentrieren
+
+  for (let i = 0; i < nBars; i++) {
+    const value = spectrumData[i];                              // 0..255
+    const barH = (value / 255) * cH;                            // volle Höhe, keine Kompression
+    const x = startX + i * slot;
+    // Frequenz -> Farbton (Blau..Orange über den Block), Lautstärke -> Helligkeit.
     // Kein Rosa/Pink/Lila (Regel 6).
-    const hue = 210 - (x / cW) * 180;
+    const hue = 210 - (i / nBars) * 180;
     const light = 28 + (value / 255) * 42;
     specCtx.fillStyle = `hsl(${hue.toFixed(0)}, 85%, ${light.toFixed(0)}%)`;
-    specCtx.fillRect(x, cH - barH, barWidth, barH);
-    x += barWidth + 1;                               // 1px Abstand
+    specCtx.fillRect(x, cH - barH, SPECTRUM_BAR_WIDTH, barH);
   }
 }
 
@@ -1349,6 +1373,9 @@ async function loadPlaylist(event) {
     const parsed = await parsePlaylistFile(pl, files);
     parsedEntries = parsedEntries.concat(parsed);
   }
+
+  // Blob-URLs der vorherigen Playlist freigeben (sonst bleiben die alten Dateien im Speicher)
+  playlist.forEach(e => { if (e.url && e.url.startsWith('blob:')) URL.revokeObjectURL(e.url); });
 
   const merged = [...parsedEntries, ...audioEntries];
   const seen = new Set();
@@ -1456,12 +1483,12 @@ function setupControls() {
   }
 }
 
-// ========== RESIZE HANDLER ==========
-window.addEventListener('resize', () => {
+// ========== RESIZE HANDLER (entprellt) ==========
+function handleResize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   initFramebuffers();
-  
+
   let overlayCanvas = document.getElementById('overlayCanvas');
   overlayCanvas.width = window.innerWidth;
   overlayCanvas.height = window.innerHeight;
@@ -1474,6 +1501,13 @@ window.addEventListener('resize', () => {
 
   points.forEach(p => p.updateDynamics());
   if (avg_circle) avg_circle.update();
+}
+
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  // Nicht bei jedem Resize-Event die FBOs neu bauen – erst wenn es kurz ruhig ist
+  if (_resizeTimer) clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(handleResize, 180);
 });
 
 // ========== MOUSE INTERACTION ==========

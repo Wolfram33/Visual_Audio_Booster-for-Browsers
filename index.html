@@ -59,7 +59,7 @@
         /* Spektrum-Balken am unteren Rand; Größe wird per JS gesetzt (kein CSS-Scaling) */
         #spectrumCanvas {
             position: fixed;
-            left: 0; bottom: 0;
+            left: 0; bottom: 100px;   /* Fallback; JS setzt die genaue Höhe über den Bedienelementen */
             display: block;
             z-index: 3;
             pointer-events: none;
